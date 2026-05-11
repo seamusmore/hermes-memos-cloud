@@ -1,0 +1,6 @@
+name: memos-cloud
+version: 1.0.0
+description: "MemOS Cloud memory provider — persistent cross-session memory via MemOS Cloud API"
+hooks:
+  - on_session_end
+  - on_memory_write
