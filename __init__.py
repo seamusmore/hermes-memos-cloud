@@ -287,6 +287,7 @@ class MemOSMemoryProvider:
                     query
                 )
                 memories = self._search_memos(query, limit=5)
+                memories = self._rerank_memories(query, memories)
                 formatted = self._format_memories(memories)
                 # Store in file-based cross-instance cache (overwrite previous)
                 cache_data = {
