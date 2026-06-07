@@ -451,11 +451,75 @@ class MemOSMemoryProvider:
 
         return "\n".join(lines)
 
+    def _rerank_memories(self, query: str, data: Dict) -> Dict:
+        """Rerank search results using MemOS reranker, filtering out low-relevance noise."""
+        memories = data.get("memory_detail_list", [])
+        prefs = data.get("preference_detail_list", [])
+
+        if not memories and not prefs:
+            return data
+
+        # Collect all memory/preference values as candidate documents
+        candidates = []
+        for m in memories:
+            candidates.append(m.get("memory_value", ""))
+        for p in prefs:
+            candidates.append(p.get("preference", ""))
+
+        if not candidates:
+            return data
+
+        try:
+            url = f"{self._base_url}/rerank"
+            payload = {
+                "model": "memos-reranker-0.6b",
+                "query": query,
+                "documents": candidates,
+            }
+            resp = requests.post(
+                url, headers=self._headers(), json=payload, timeout=10
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            scores = result.get("data", {}).get("scores", [])
+
+            if not scores:
+                logger.warning("_rerank_memories: empty scores, falling back to unfiltered")
+                return data
+
+            # scores[i] = relevance score for candidates[i]; filter below threshold
+            THRESHOLD = 0.3
+            mem_count = len(memories)
+            filtered_memories = [
+                memories[i] for i in range(mem_count)
+                if i < len(scores) and scores[i] >= THRESHOLD
+            ]
+            filtered_prefs = [
+                prefs[i - mem_count] for i in range(mem_count, len(candidates))
+                if i < len(scores) and scores[i] >= THRESHOLD
+            ]
+
+            logger.info(
+                "_rerank_memories: %d→%d facts, %d→%d prefs (threshold=%.1f)",
+                len(memories), len(filtered_memories),
+                len(prefs), len(filtered_prefs),
+                THRESHOLD
+            )
+
+            return {
+                "memory_detail_list": filtered_memories,
+                "preference_detail_list": filtered_prefs,
+            }
+        except Exception as e:
+            logger.warning("_rerank_memories failed, falling back to unfiltered: %s", e)
+            return data
+
     def _do_search(self, query: str, limit: int = 5) -> str:
         """Execute search and return formatted result."""
         limit = min(max(1, limit), 10)
         try:
             data = self._search_memos(query, limit)
+            data = self._rerank_memories(query, data)
             formatted = self._format_memories(data)
             if formatted:
                 return formatted
