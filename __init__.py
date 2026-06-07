@@ -482,11 +482,16 @@ class MemOSMemoryProvider:
             )
             resp.raise_for_status()
             result = resp.json()
-            scores = result.get("data", {}).get("scores", [])
-
-            if not scores:
-                logger.warning("_rerank_memories: empty scores, falling back to unfiltered")
+            # API returns data.results[].{index, relevance_score} — rebuild ordered scores
+            raw_results = result.get("data", {}).get("results", [])
+            if not raw_results:
+                logger.warning("_rerank_memories: empty results, falling back to unfiltered")
                 return data
+            scores = [0.0] * len(candidates)
+            for r in raw_results:
+                idx = r.get("index", -1)
+                if 0 <= idx < len(candidates):
+                    scores[idx] = r.get("relevance_score", 0.0)
 
             # scores[i] = relevance score for candidates[i]; filter below threshold
             THRESHOLD = 0.3
