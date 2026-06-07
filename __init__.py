@@ -473,7 +473,7 @@ class MemOSMemoryProvider:
         try:
             url = f"{self._base_url}/rerank"
             payload = {
-                "model": "memos-reranker-0.6b",
+                "model": "memos-reranker-4b",
                 "query": query,
                 "documents": candidates,
             }
